@@ -17,5 +17,3 @@ def get_state_dirs():
     Return a list of paths from where salt should load state modules
     """
     return [str(PACKAGE_ROOT / "states")]
-
-
