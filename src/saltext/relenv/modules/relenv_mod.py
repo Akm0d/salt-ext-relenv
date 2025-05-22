@@ -12,7 +12,7 @@ def __virtual__():
     return __virtualname__
 
 
-def fetch(arch: str = None, python: str = None, user: str = None):
+def fetch(venv_bin: str = None, arch: str = None, python: str = None):
     """
     Fetch the tools to build a relenv environment.
 
@@ -22,16 +22,24 @@ def fetch(arch: str = None, python: str = None, user: str = None):
 
         salt '*' relenv.fetch arch=amd64 python=3.10.17
     """
-    exe = __grains__["pythonexecutable"]
-    args = [exe, "-m", "relenv", "fetch"]
+    if venv_bin:
+        args = [venv_bin, "fetch"]
+    else:
+        exe = __grains__["pythonexecutable"]
+        args = [exe, "-m", "relenv", "fetch"]
     if arch:
         args.append(f"--arch={arch}")
     if python:
         args.append(f"--python={python}")
-    return __salt__["cmd.run"](args, python_shell=False, runas=user)
+    return __salt__["cmd.run"](args, python_shell=False)
 
 
-def toolchain(arch=None, clean: bool = False, crosstool_only: bool = False, user: str = None):
+def toolchain(
+    venv_bin: str = None,
+    arch=None,
+    clean: bool = False,
+    crosstool_only: bool = False,
+):
     """
     Fetch the toolchain to build c extensions for a relenv environment.
 
@@ -41,15 +49,18 @@ def toolchain(arch=None, clean: bool = False, crosstool_only: bool = False, user
 
         salt '*' relenv.toolchain arch=amd64 clean=True crosstool_only=True
     """
-    exe = __grains__["pythonexecutable"]
-    args = [exe, "-m", "relenv", "toolchain", "fetch"]
+    if venv_bin:
+        args = [venv_bin, "toolchain", "fetch"]
+    else:
+        exe = __grains__["pythonexecutable"]
+        args = [exe, "-m", "relenv", "toolchain", "fetch"]
     if arch:
         args.append(f"--arch={arch}")
     if clean:
         args.append("--clean")
     if crosstool_only:
         args.append("--crosstool-only")
-    return __salt__["cmd.run"](args, python_shell=False, runas=user)
+    return __salt__["cmd.run"](args, python_shell=False)
 
 
 def create(
@@ -82,11 +93,21 @@ def create(
         args.append(f"--python={python}")
 
     # Ensure that the proper build tools exist
-    ret = fetch(arch, python, user=user)
+    ret = fetch(arch, python)
     if not ret["retcode"] == 0:
         return ret
-    ret = toolchain(arch, clean=clean, crosstool_only=crosstool_only, user=user)
+    ret = toolchain(arch, clean=clean, crosstool_only=crosstool_only)
     if not ret["retcode"] == 0:
         return ret
 
-    return __salt__["cmd.run"](args, python_shell=False, runas=user)
+    ret = __salt__["cmd.run"](args, python_shell=False)
+    if not ret["retcode"] == 0:
+        return ret
+
+    # If a user is specified, set the ownership of the directory
+    if user:
+        ret = __salt__["file.chown"](name, user=user)
+        if not ret["retcode"] == 0:
+            return ret
+
+    return ret
